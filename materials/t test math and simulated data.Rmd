@@ -1,0 +1,342 @@
+---
+title: "One-line Monte Carlo simulation"
+author: "Ian Hussey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_download: true
+    code_folding: show
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+    mathjax: "default"
+---
+
+
+## 1. Sample Means
+
+For each group, the sample mean is calculated as:
+
+$$
+\bar{x} = \frac{1}{n} \sum_{i=1}^{n} x_i
+$$
+
+## 2. Sample Variance and Standard Deviation
+
+Sample variance:
+
+$$
+s^2 = \frac{1}{n - 1} \sum_{i=1}^{n} (x_i - \bar{x})^2
+$$
+
+Sample standard deviation:
+
+$$
+s = \sqrt{s^2}
+$$
+
+Let \( s_1, s_2 \) and \( n_1, n_2 \) be the standard deviations and sample sizes of group 1 and group 2.
+
+## 3. Standard Error of the Difference Between Means
+
+Assuming independent samples:
+
+$$
+SE = \sqrt{ \frac{s_1^2}{n_1} + \frac{s_2^2}{n_2} }
+$$
+
+## 4. Test Statistic (t)
+
+The t-statistic is calculated as:
+
+$$
+t = \frac{ \bar{x}_1 - \bar{x}_2 }{SE}
+$$
+
+This t-statistic represents the standardized difference between the sample means under the assumption that the null hypothesis \( H_0: \mu_1 = \mu_2 \) is true.
+
+## 5. Degrees of Freedom (Welch’s Approximation)
+
+Because the two samples may have different variances, we use the Welch-Satterthwaite approximation for degrees of freedom:
+
+$$
+df = \frac{ \left( \frac{s_1^2}{n_1} + \frac{s_2^2}{n_2} \right)^2 }{
+\frac{ \left( \frac{s_1^2}{n_1} \right)^2 }{n_1 - 1} +
+\frac{ \left( \frac{s_2^2}{n_2} \right)^2 }{n_2 - 1}
+}
+$$
+
+This value of \( df \) determines which **t-distribution** we reference when calculating the p-value.
+
+## 6. p-Value
+
+Given the calculated t-statistic and degrees of freedom, the p-value is computed as the probability of observing a t-value at least as extreme as the one obtained:
+
+- For a two-sided test:
+
+$$
+p = 2 \cdot P(T_{df} > |t|)
+$$
+
+Where \( T_{df} \) denotes a t-distribution with the calculated degrees of freedom.
+
+
+
+
+## The t-Distribution
+
+The **Student's t-distribution** arises when standardizing the difference between a sample mean and a population mean, using the **sample standard deviation** instead of the population standard deviation. If \( X_1, \dots, X_n \sim \mathcal{N}(\mu, \sigma^2) \), then:
+
+$$
+t = \frac{\bar{X} - \mu}{S / \sqrt{n}} \sim t_{n - 1}
+$$
+
+where:
+
+- \( \bar{X} \) is the sample mean,
+- \( S \) is the sample standard deviation,
+- \( n \) is the sample size,
+- and the degrees of freedom are \( df = n - 1 \).
+
+The t-distribution is derived from the ratio of a standard normal variable and the square root of a scaled chi-squared variable:
+
+$$
+t = \frac{Z}{\sqrt{V / \nu}} \quad \text{where } Z \sim \mathcal{N}(0,1),\; V \sim \chi^2_{\nu},\; Z \perp V
+$$
+
+Thus, the t-distribution with \( \nu \) degrees of freedom is defined by:
+
+$$
+t \sim \frac{Z}{\sqrt{V/\nu}} \sim t_{\nu}
+$$
+
+## Probability Density Function (PDF)
+
+The probability density function of the t-distribution with \( \nu \) degrees of freedom is:
+
+$$
+f(t) = \frac{ \Gamma\left(\frac{\nu + 1}{2}\right) }
+{ \sqrt{\nu \pi} \, \Gamma\left(\frac{\nu}{2}\right) }
+\left(1 + \frac{t^2}{\nu} \right)^{ -\frac{\nu + 1}{2} }
+$$
+
+Where \( \Gamma(\cdot) \) is the gamma function, a generalization of the factorial:
+
+$$
+\Gamma(n) = (n - 1)!
+$$
+
+This function defines the shape of the t-distribution used to determine p-values for a given t-statistic.
+
+
+# combined
+
+$$
+\bar{x} = \frac{1}{n} \sum_{i=1}^{n} x_i
+$$
+
+$$
+s^2 = \frac{1}{n - 1} \sum_{i=1}^{n} (x_i - \bar{x})^2
+$$
+
+$$
+SE = \sqrt{ \frac{s_1^2}{n_1} + \frac{s_2^2}{n_2} }
+$$
+
+$$
+t = \frac{ \bar{x}_1 - \bar{x}_2 }{SE}
+$$
+
+$$
+df = \frac{ \left( \frac{s_1^2}{n_1} + \frac{s_2^2}{n_2} \right)^2 }{
+\frac{ \left( \frac{s_1^2}{n_1} \right)^2 }{n_1 - 1} +
+\frac{ \left( \frac{s_2^2}{n_2} \right)^2 }{n_2 - 1}
+}
+$$
+
+$$
+t = \frac{\bar{X} - \mu}{S / \sqrt{n}} \sim t_{n - 1}
+$$
+$$
+f(t) = \frac{ \Gamma\left(\frac{\nu + 1}{2}\right) }
+{ \sqrt{\nu \pi} \, \Gamma\left(\frac{\nu}{2}\right) }
+\left(1 + \frac{t^2}{\nu} \right)^{ -\frac{\nu + 1}{2} }
+$$
+
+$$
+\Gamma(n) = (n - 1)!
+$$
+
+$$
+p = 2 \cdot P(T_{df} > |t|)
+$$
+
+# plots
+
+```{r fig.height=3, fig.width=5}
+
+library(ggplot2)
+library(ggdist)  # for geom_dots
+library(janitor)
+
+# Example data
+#set.seed(123)
+
+df <- data.frame(
+  Group = rep(c("Placebo", "Intervention"), each = 50),
+  Score = round_half_up(c(rnorm(50, mean = 17, sd = 4), 
+                          rnorm(50, mean = 15, sd = 4)), 0)
+)
+
+# Dot-only raincloud-style plot
+ggplot(df, aes(x = Group, y = Score)) +
+  ggdist::geom_dots(
+    side = "right",          # only show dots on the left side
+    scale = 0.8,            # controls spacing
+    dotsize = 0.75,          # size of dots
+    binwidth = 1          # controls vertical binning
+  ) +
+  scale_y_continuous(name = "Depression score", breaks = scales::breaks_pretty(n = 10),
+                     limits = c(0, 35)) +
+  coord_flip() +            # horizontal layout, like a raincloud
+  theme_linedraw() +
+  labs(title = "Sample 5 (N = 50 per group)")
+
+ggsave("rct5.png",
+       width = 5, 
+       height = 3)
+
+```
+
+
+
+```{r}
+
+mu1 <- 17
+sigma1 <- 1
+
+mu2 <- 15
+sigma2 <- 1
+
+ggplot(data.frame(x = c(12, 20)), aes(x)) +
+  stat_function(fun = dnorm, args = list(mean = mu1, sd = sigma1), 
+                aes(color = "Placebo"), size = 1.2) +
+  stat_function(fun = dnorm, args = list(mean = mu2, sd = sigma2), 
+                aes(color = "Intervention"), size = 1.2) +
+  scale_color_manual(values = c("Placebo" = "steelblue", "Intervention" = "tomato")) +
+  labs(title = "Population Distribution",
+       x = "x", y = "Density", color = "Group") +
+  theme_linedraw() +
+  scale_x_continuous(name = "Depression score", 
+                     breaks = scales::breaks_pretty(n = 10),
+                     limits = c(12, 20))
+
+```
+
+
+
+```{r}
+
+x_vals <- seq(0, 63, length.out = 500)
+
+df_plot <- bind_rows(
+  data.frame(
+    x = x_vals,
+    density = dnorm(x_vals, mean = 17, sd = 4),
+    Group = "Placebo"
+  ),
+  data.frame(
+    x = x_vals,
+    density = dnorm(x_vals, mean = 15, sd = 4),
+    Group = "Intervention"
+  )
+)
+
+# Plot with shaded area under the curve
+ggplot(df_plot, aes(x = x, y = density, fill = Group)) +
+  geom_area(alpha = 0.7, position = "identity") +
+  scale_fill_manual(values = c("Placebo" = "steelblue", "Intervention" = "tomato")) +
+  labs(title = "Population Distribution", x = "x", y = "Density") +
+  theme_linedraw() +
+  scale_x_continuous(name = "Depression score", 
+                     breaks = scales::breaks_pretty(n = 8),
+                     limits = c(0, 35))
+
+ggsave("pop.png",
+       width = 5, 
+       height = 3)
+
+```
+
+# PRNG
+
+```{r}
+
+library(janitor)
+
+
+runif(n = 3, min = 1, max = 10) |> round_half_up(digits = 0)
+
+
+runif(n = 3, min = 1, max = 10) |> round_half_up(digits = 0)
+
+
+runif(n = 3, min = 1, max = 10) |> round_half_up(digits = 0)
+
+```
+
+
+```{r}
+
+library(janitor)
+
+set.seed(42)
+runif(n = 3, min = 1, max = 10) |> round_half_up(digits = 0)
+
+set.seed(42)
+runif(n = 3, min = 1, max = 10) |> round_half_up(digits = 0)
+
+set.seed(42)
+runif(n = 3, min = 1, max = 10) |> round_half_up(digits = 0)
+
+```
+
+# multivariate data
+
+```{r fig.height=5, fig.width=5}
+
+# Load required packages
+library(ggplot2)
+
+library(ggExtra)
+
+# Generate multivariate normal data
+# For example, 500 observations of two variables with correlation = 0.6
+set.seed(123)  # for reproducibility
+
+library(faux)
+
+dat <- rnorm_multi(n = 500, 
+                   vars = 2, 
+                   varnames = c("X", "Y"),
+                   mu = 0, 
+                   sd = 1, 
+                   r = 0.6)
+
+p <- ggplot(dat, aes(x = X, y = Y)) +
+  geom_point(alpha = 0.6) +
+  theme_linedraw()
+
+ggMarginal(p, type = "density", fill = "gray", alpha = 0.5)
+
+ggsave("scatter.png",
+       width = 5, 
+       height = 5)
+
+```
+
+
+
+
+
