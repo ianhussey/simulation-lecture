@@ -12,7 +12,7 @@ output:
     toc_float: yes
     mathjax: "default"
 ---
-
+# Math
 
 ## 1. Sample Means
 
@@ -172,71 +172,183 @@ $$
 p = 2 \cdot P(T_{df} > |t|)
 $$
 
-# plots
+# Plots
+
+```{r}
+
+# params
+mu_control <- 19
+mu_intervention <- 15
+target_var <- 8^2 # 64
+n_per_group <- 25
+
+```
+
+## Visualise sample
+
+DGP neg binomial, analysis assumes gaussian
 
 ```{r fig.height=3, fig.width=5}
 
 library(ggplot2)
 library(ggdist)  # for geom_dots
 library(janitor)
+library(roundwork)
+library(dplyr)
+library(tidyverse)
+library(ggdist)
 
-# Example data
-#set.seed(123)
+for(study in 1:5){
+  set.seed(study+10)
+  
+  # Calculate dispersion (size) to match SD = 8
+  # Formula: size = mu^2 / (var - mu)
+  theta_control <- mu_control^2 / (target_var - mu_control)
+  theta_intervention <- mu_intervention^2 / (target_var - mu_intervention)
+  
+  df <- data.frame(
+    Group = rep(c("Control", "Intervention"), each = n_per_group),
+    Score = c(
+      rnbinom(n_per_group, mu = mu_control, size = theta_control),
+      rnbinom(n_per_group, mu = mu_intervention, size = theta_intervention)
+    )
+  )
+  
+  mean_diff <- mean(df$Score[df$Group == "Intervention"]) - mean(df$Score[df$Group == "Control"])
 
-df <- data.frame(
-  Group = rep(c("Placebo", "Intervention"), each = 50),
-  Score = round_half_up(c(rnorm(50, mean = 17, sd = 4), 
-                          rnorm(50, mean = 15, sd = 4)), 0)
-)
+# Use it in your subtitle
+  
+  # Dot-only raincloud-style plot
+  ggplot(df, aes(x = Group, y = Score, color = Group, fill = Group)) +
+    ggdist::geom_dots(
+      side = "right",           
+      scale = 0.8,             
+      dotsize = 0.75,          
+      binwidth = 1           
+    ) +
+    scale_color_manual(values = c("Control" = "steelblue", "Intervention" = "tomato")) +
+    scale_fill_manual(values = c("Control" = "steelblue", "Intervention" = "tomato")) +
+    scale_y_continuous(
+      name = "Depression score", 
+      breaks = scales::breaks_pretty(n = 10),
+      limits = c(0, 45)
+    ) +
+    coord_flip() +            
+    theme_linedraw() +
+    labs(
+      title = paste0("Study ", study),
+      # subtitle = paste0("Mean intervention = ", round_up(mean(df$Score[df$Group == "Intervention"]), 1), 
+      #                   ", Mean control = ", round_up(mean(df$Score[df$Group == "Control"], 1)), 
+      #                   ", Pooled SD = ", round_up(mean(c(sd(df$Score[df$Group == "Intervention"]),
+      #                                                     sd(df$Score[df$Group == "Intervention"]))), 1)),
+      subtitle = paste0("Difference in means = ", roundwork::round_up(mean_diff, 1)),
+      color = "Group",
+      x = ""
+    ) +
+    theme(legend.position = "none")
+  
+  ggsave(paste0("sample_effect_study_", study, ".png"),
+         width = 7, 
+         height = 3)
+} 
 
-# Dot-only raincloud-style plot
-ggplot(df, aes(x = Group, y = Score)) +
-  ggdist::geom_dots(
-    side = "right",          # only show dots on the left side
-    scale = 0.8,            # controls spacing
-    dotsize = 0.75,          # size of dots
-    binwidth = 1          # controls vertical binning
+
+```
+
+## Visualise population gaussian
+
+```{r}
+
+# Generate a sequence of x values for a smooth curve
+x_vals <- seq(0, 45, length.out = 1000)
+
+plot_data_norm <- tibble(x = x_vals) %>%
+  mutate(
+    Control = dnorm(x, mean = mu_control, sd = sqrt(target_var)),
+    Intervention = dnorm(x, mean = mu_intervention, sd = sqrt(target_var))
+  ) %>%
+  pivot_longer(cols = c(Control, Intervention), 
+               names_to = "Group", 
+               values_to = "Density") |>
+  mutate(Group = fct_relevel(Group, "Intervention", "Control"))
+
+ggplot(plot_data_norm, aes(x = x, y = Density, fill = Group)) +
+  geom_area(alpha = 0.6, position = "identity") +
+  scale_fill_manual(values = c("Control" = "steelblue", "Intervention" = "tomato")) +
+  labs(title = "Population",
+       #subtitle = paste0("Mean intervention = ", mu_control, ", Mean control = ", mu_intervention, ", Pooled SD = ", sqrt(target_var)),
+       subtitle = paste0(
+      "Difference in means = ", roundwork::round_up(mu_intervention - mu_control, 1), "\n\n"
+    ),
+       x = "Depression score", 
+       y = "Density", 
+       fill = "Group") +
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 5)) +
+  scale_x_continuous(breaks = scales::breaks_pretty(n = 9),
+                     limits = c(0, 45)) +
+  theme_linedraw()
+
+ggsave("population_effect_normal.png",
+       width = 7, 
+       height = 5)
+
+```
+
+## Visualise population neg binomial
+
+```{r}
+
+# Calculate dispersion (size) for each group to keep SD constant at 8
+theta_control <- round(mu_control^2 / (target_var - mu_control), 1) 
+theta_intervention  <- round(mu_intervention^2 / (target_var - mu_intervention), 1)
+
+plot_data <- tibble(x = 0:50) %>%
+  mutate(
+    Control = dnbinom(x, mu = mu_control, size = theta_control),
+    Intervention = dnbinom(x, mu = mu_intervention, size = theta_intervention)
+  ) %>%
+  pivot_longer(cols = c(Control, Intervention), 
+               names_to = "Group", 
+               values_to = "Probability") |>
+  mutate(Group = fct_relevel(Group, "Intervention", "Control"))
+
+ggplot(plot_data, aes(x = x, y = Probability, fill = Group)) +
+  geom_area(alpha = 0.6, position = "identity") +
+  scale_fill_manual(values = c("Control" = "steelblue", "Intervention" = "tomato")) +
+  labs(
+    title = "Population",
+    subtitle = paste0(
+      "Difference in means = ", roundwork::round_up(mu_intervention - mu_control, 1), "\n",
+      "DGP: Negative Binomial Distribution\nIntervention(μ=", mu_intervention, ", θ=", theta_intervention, 
+      "); Control(μ=", mu_control, ", θ=", theta_control, 
+      "); σ=", sqrt(target_var)
+    ),
+    y = "Density", 
+    fill = "Group"
   ) +
-  scale_y_continuous(name = "Depression score", breaks = scales::breaks_pretty(n = 10),
-                     limits = c(0, 35)) +
-  coord_flip() +            # horizontal layout, like a raincloud
-  theme_linedraw() +
-  labs(title = "Sample 5 (N = 50 per group)")
+  scale_y_continuous(breaks = scales::breaks_pretty(n = 5)) +
+  scale_x_continuous(
+    name = "Depression score", 
+    breaks = scales::breaks_pretty(n = 9),
+    limits = c(0, 45)
+  ) +
+  theme_linedraw()
 
-ggsave("rct5.png",
-       width = 5, 
-       height = 3)
-
-```
-
-
-
-```{r}
-
-mu1 <- 17
-sigma1 <- 1
-
-mu2 <- 15
-sigma2 <- 1
-
-ggplot(data.frame(x = c(12, 20)), aes(x)) +
-  stat_function(fun = dnorm, args = list(mean = mu1, sd = sigma1), 
-                aes(color = "Placebo"), size = 1.2) +
-  stat_function(fun = dnorm, args = list(mean = mu2, sd = sigma2), 
-                aes(color = "Intervention"), size = 1.2) +
-  scale_color_manual(values = c("Placebo" = "steelblue", "Intervention" = "tomato")) +
-  labs(title = "Population Distribution",
-       x = "x", y = "Density", color = "Group") +
-  theme_linedraw() +
-  scale_x_continuous(name = "Depression score", 
-                     breaks = scales::breaks_pretty(n = 10),
-                     limits = c(12, 20))
+ggsave("population_effect_negbinomial.png",
+       width = 7, 
+       height = 5)
 
 ```
 
 
 
+
+
+# other
+
 ```{r}
+
+set.seed(42)
 
 x_vals <- seq(0, 63, length.out = 500)
 
@@ -263,9 +375,9 @@ ggplot(df_plot, aes(x = x, y = density, fill = Group)) +
                      breaks = scales::breaks_pretty(n = 8),
                      limits = c(0, 35))
 
-ggsave("pop.png",
-       width = 5, 
-       height = 3)
+# ggsave("pop.png",
+#        width = 7, 
+#        height = 5)
 
 ```
 
@@ -330,9 +442,9 @@ p <- ggplot(dat, aes(x = X, y = Y)) +
 
 ggMarginal(p, type = "density", fill = "gray", alpha = 0.5)
 
-ggsave("scatter.png",
-       width = 5, 
-       height = 5)
+# ggsave("scatter.png",
+#        width = 5, 
+#        height = 5)
 
 ```
 
